@@ -536,7 +536,7 @@
         <button id="rcpSave">Save</button>
         <button class="secondary" id="rcpReset">Reset</button>
       </div>
-      <div class="hint">These settings save locally. Later we’ll POST them to your backend.</div>
+      <div class="hint">These settings save to your account (Supabase).</div>
     </div>
   </section>
 </section>
@@ -778,64 +778,6 @@ async function loadCloudState() {
   }
 }
 
-  async function upsertReceptionistConfig(partialCfg = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user;
-  if (!user) return { ok: false, reason: 'no-session' };
-
-  const cfg = {
-    user_id: user.id,
-    name: state.receptionist.name ?? 'Barber AI Receptionist',
-    greeting: state.receptionist.greeting ?? '',
-    voice: state.receptionist.voice ?? 'alloy',
-    rate: Number(state.receptionist.rate ?? 1.0),
-    barge_in: !!state.receptionist.bargeIn,
-    end_silence_ms: Number(state.receptionist.endSilenceMs ?? 1000),
-    timezone: state.receptionist.timezone ?? 'America/New_York',
-    phone: state.receptionist.phone ?? '',
-    ...partialCfg, // allow overrides
-  };
-
-  const { error } = await supabase
-    .from('receptionist_config')
-    .upsert(cfg)
-    .select('user_id'); // forces error surfaces
-  return { ok: !error, error };
-}
-
-async function fetchReceptionistConfig() {
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user;
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from('receptionist_config')
-    .select('*')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.warn('[cloud] receptionist_config fetch error', error);
-    return null;
-  }
-  return data;
-}
-
-async function ensureReceptionistRowExists() {
-  const cfg = await fetchReceptionistConfig();
-  if (cfg) return; // already exists
-  await upsertReceptionistConfig(); // writes current state.receptionist as their row
-}
-
-async function apiFetch(path, opts = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(path, { ...opts, headers });
-  if (!res.ok) throw new Error(`API ${res.status}`);
-  return res.json();
-}
 
 function getReceptionistPayloadFromState() {
   return {
@@ -850,40 +792,60 @@ function getReceptionistPayloadFromState() {
   };
 }
 
-// Convenience: when user logs in, hydrate UI from cloud (or seed cloud)
+// Convenience: when user logs in, hydrate UI from Supabase (barber_state)
 async function hydrateFromCloudAndRepaint() {
-  try {
-    const cfg = await apiFetch('/api/me/config'); // GET -> { ... } or null/404
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user) return false;
 
-    if (cfg && typeof cfg === 'object') {
+  try {
+    const { data: row, error } = await supabase
+      .from('barber_state')
+      .select('data, updated_at')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (row?.data) {
+      // support both schemas: either flat in data, or nested under data.receptionist
+      const d = row.data;
+      const r = d.receptionist ? d.receptionist : d;
+
       state.receptionist = {
         ...state.receptionist,
-        name:         cfg.name ?? state.receptionist.name,
-        greeting:     cfg.greeting ?? state.receptionist.greeting,
-        voice:        cfg.voice ?? state.receptionist.voice,
-        rate:         (typeof cfg.rate === 'number' ? cfg.rate : state.receptionist.rate),
-        bargeIn:      (typeof cfg.barge_in === 'boolean' ? cfg.barge_in : state.receptionist.bargeIn),
-        endSilenceMs: (typeof cfg.end_silence_ms === 'number' ? cfg.end_silence_ms : state.receptionist.endSilenceMs),
-        timezone:     cfg.timezone ?? state.receptionist.timezone,
-        phone:        cfg.phone ?? state.receptionist.phone,
+        name:         r.name         ?? state.receptionist.name,
+        greeting:     r.greeting     ?? state.receptionist.greeting,
+        voice:        r.voice        ?? state.receptionist.voice,
+        rate:         (typeof r.rate === 'number' ? r.rate : state.receptionist.rate),
+        bargeIn:      (typeof r.barge_in === 'boolean' ? r.barge_in : state.receptionist.bargeIn),
+        endSilenceMs: (typeof r.end_silence_ms === 'number' ? r.end_silence_ms : state.receptionist.endSilenceMs),
+        timezone:     r.timezone     ?? state.receptionist.timezone,
+        phone:        r.phone        ?? state.receptionist.phone,
       };
-      saveLocalOnly();
+
+      saveLocalOnly(); // keep local cache synced
     } else {
-      // no server row yet; keep local defaults
-      console.log('[api] /api/me/config returned empty; keeping local receptionist state');
+      // no row yet → seed with current local receptionist config
+      await supabase
+        .from('barber_state')
+        .upsert({
+          user_id: user.id,
+          data: getReceptionistPayloadFromState() // {name, greeting, voice, ...}
+        })
+        .select('user_id');
     }
   } catch (e) {
-    console.warn('[api] GET /api/me/config failed; using local state', e);
+    console.warn('[supabase] hydrate failed; using local', e);
   }
 
-  // Keep your existing scheduling state load
-  try { await loadCloudState(); } catch {}
-
+  // repaint UI
   renderWeek();
   renderMonth();
   paintReceptionistForm?.();
   return true;
 }
+
 
 
 
@@ -1302,19 +1264,19 @@ clearBlackouts.addEventListener('click', ()=>{
 });
 
 if (rcpSave) {
+  // rcpSave
   rcpSave?.addEventListener('click', async () => {
     saveReceptionistFromForm();
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        await apiFetch('/api/me/config', {
-          method: 'PUT',
-          body: JSON.stringify(getReceptionistPayloadFromState())
-        });
-      }
-    } catch (e) {
-      console.warn('[api] PUT /api/me/config failed', e);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      const payload = getReceptionistPayloadFromState();
+      const { error } = await supabase
+        .from('barber_state')
+        .upsert({ user_id: session.user.id, data: payload })
+        .select('user_id');
+      if (error) console.warn('[supabase] upsert barber_state failed', error);
     }
+  
     rcpSave.disabled = true;
     const old = rcpSave.textContent;
     rcpSave.textContent = "Saved ✅";
@@ -1351,20 +1313,17 @@ if (rcpReset) {
 const advSave = document.getElementById('advSave');
 advSave?.addEventListener('click', async () => {
   saveReceptionistFromForm();
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      await apiFetch('/api/me/config', {
-        method: 'PUT',
-        body: JSON.stringify(getReceptionistPayloadFromState())
-      });
-    }
-  } catch (e) {
-    console.warn('[api] PUT /api/me/config failed', e);
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    const payload = getReceptionistPayloadFromState();
+    const { error } = await supabase
+      .from('barber_state')
+      .upsert({ user_id: session.user.id, data: payload })
+      .select('user_id');
+    if (error) console.warn('[supabase] upsert barber_state failed', error);
   }
-
   advSave.textContent = "Saved!";
-    setTimeout(() => (advSave.textContent = "Save"), 900);
+  setTimeout(() => (advSave.textContent = "Save"), 900);
 });
 
 document.getElementById('advReset')?.addEventListener('click', () => {
@@ -1660,7 +1619,6 @@ window.doSignOut = doSignOut; // ensure your button calls this exact one
   
         if (event === 'SIGNED_IN' && session) {
           await hydrateFromCloudAndRepaint();
-          await ensureReceptionistRowExists();
           gotoSchedulingIfNotThere({ replace: true });
         }
   
