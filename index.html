@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Barber AI – Availability & Blackouts</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#171a21;
+    --muted:#8a93a6;
+    --text:#e7ecf7;
+    --accent:#4f8cff;
+    --accent-2:#5dd29b;
+    --danger:#ff6b6b;
+    --grid:#232736;
+    --chip:#222637;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial;
+  }
+  header{
+    padding:18px 20px;border-bottom:1px solid #1d2030;background:var(--panel);
+    display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  }
+  header h1{font-size:16px;margin:0 10px 0 0;letter-spacing:.2px;opacity:.95}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ctrl{
+    display:flex;flex-direction:column;gap:6px;background:var(--chip);
+    padding:10px 12px;border-radius:10px;border:1px solid #262b3e;min-width:140px;
+  }
+  .ctrl label{
+    font-size:13px;
+    font-weight:600;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:.8px;
+  }
+  .ctrl input[type="time"], .ctrl select{
+    background:#111420;color:var(--text);border:1px solid #2c3147;border-radius:8px;
+    padding:7px 8px;outline:none;
+  }
+  button{
+    background:var(--accent);color:white;border:none;border-radius:10px;
+    padding:10px 14px;font-weight:600;cursor:pointer;
+  }
+  button.secondary{background:#28304a;color:#d6dcf0}
+  button.danger{background:var(--danger)}
+  main{
+    padding:18px;
+    max-width:1280px;
+    margin:0 auto;
+  }
+  .card{
+    background:var(--panel);border:1px solid #23273a;border-radius:14px;overflow:hidden;
+  }
+  .card header{
+    display:flex;justify-content:space-between;align-items:center;background:#131722;border-bottom:1px solid #21263a;
+    padding:12px 14px;position:unset;
+  }
+  .card header h2{margin:0;font-size:14px;letter-spacing:.2px}
+  .hint{color:var(--muted);font-size:12px}
+  /* WEEK GRID */
+  .week-wrap{overflow:auto}
+  .week{
+    display:grid;grid-template-columns:70px repeat(7,1fr);min-width:880px;grid-auto-flow: row;
+  }
+
+  .day-head,.time-cell{
+    background:#131722;border-bottom:1px solid #1f2436;position:sticky;top:0;z-index:2;
+  }
+  .day-head{padding:8px 10px;text-align:center;border-left:1px solid #1f2436}
+  .day-head .dow{font-size:12px;color:var(--muted)}
+  .day-head .date{font-weight:700}
+  .time-col{background:#111420;border-right:1px solid #1f2436}
+  .time-label{
+    height:40px;display:flex;align-items:flex-start;justify-content:flex-end;padding:2px 8px;color:var(--muted);
+    border-bottom:1px dashed #1e2435;font-size:12px
+  }
+  .slots{
+    display:grid;border-right:1px solid #1f2436;grid-auto-rows:20px;background:#0f1220;
+  }
+  .slot{
+    border-bottom:1px solid var(--grid);cursor:pointer;position:relative;
+  }
+  .slot:hover{ background:#2a1515; }
+  .slot.active {
+    background: linear-gradient(180deg, #5a1c1c, #3d0f0f); /* red tones */
+    border-color: #7e303a;
+    box-shadow: inset 0 0 0 1px #a33b3b;
+  }
+  .slot.blocked{background:#2a1515;color:#d9a2a2;cursor:not-allowed;opacity:.55}
+  .tag{
+    position:absolute;right:6px;top:2px;font-size:10px;color:#cfe3ff;opacity:.8
+  }
+  /* MONTH CAL */
+  .month-controls{
+    display:flex;gap:8px;align-items:center
+  }
+  .month-grid{
+    display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid #22263b;border-left:1px solid #22263b
+  }
+  .cell{
+    min-height:78px;border-right:1px solid #22263b;border-bottom:1px solid #22263b;padding:8px;position:relative;
+    background:#0f1220;cursor:pointer;
+  }
+  .cell .d{position:absolute;top:6px;right:8px;color:var(--muted);font-size:12px}
+  .cell.dim{opacity:.5}
+  .cell.blockout{background:#2a171a;outline:2px solid #4a1c22}
+  .legend{display:flex;gap:10px;font-size:12px;color:var(--muted)}
+  .legend .chip{display:inline-flex;align-items:center;gap:6px}
+  .legend .dot{width:14px;height:14px;border-radius:4px;display:inline-block;background:#213259;border:1px solid #3c5aa9}
+  .legend .dot.block{background:#4a1c22;border-color:#7e303a}
+  /* red chip for "Unavailable slot" */
+  .legend .dot.unavail{
+    background:#5a1c1c;
+    border-color:#a33b3b;
+  }
+  footer{
+    max-width:1280px;margin:12px auto 28px;padding:0 18px;color:var(--muted);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap
+  }
+  .inline-actions{display:flex;gap:8px;flex-wrap:wrap}
+  textarea#import{
+    width:100%;min-height:120px;background:#0e1220;border:1px solid #243054;color:#e6edff;border-radius:10px;padding:10px
+  }
+  .month-dow{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  border-left:1px solid #22263b;
+  border-top:1px solid #22263b;
+  background:#131722;
+}
+  /* weekday header buttons */
+.month-dow .dow-btn{
+  width:100%;
+  background:#0f1220;
+  color:#cfd6ea;
+  border:none;
+  border-right:1px solid #22263b;
+  border-bottom:1px solid #22263b;
+  padding:8px 0;
+  font-weight:600;
+  cursor:pointer;
+}
+.month-dow .dow-btn:hover{ background:#151a24; }
+.month-dow .dow-btn.active{ background:#1b2240; color:#fff; }
+  /* === App shell (sidebar + content) === */
+.app{
+  display:grid;
+  grid-template-columns: 240px 1fr;
+  min-height:100vh;
+}
+
+/* --- Week header polish --- */
+.week .day-head{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:2px;
+  padding:10px 8px;
+  background:#111626;            /* darker than the grid so it pops */
+  border-left:1px solid #1f2436;
+  border-bottom:1px solid #1f2436;
+  position:sticky; top:0; z-index:3;
+}
+
+.week .day-head .dow{
+  font-size:11px;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  font-weight:700;
+  color:#b8c4dc;                 /* softer, not pure white */
+  opacity:.95;
+}
+
+.week .day-head .date{
+  font-size:13px;
+  font-weight:800;
+  color:#e7ecf7;
+}
+
+/* highlight today’s column header */
+.week .day-head.today{
+  background:#1a2242;
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+/* make weekends slightly dimmer */
+.week .day-head.weekend .dow{
+  color:#9aa6c0;
+  opacity:.9;
+}
+
+/* left time column slightly darker so the header strip lines up nicely */
+.week .time-col{
+  background:#0f1324;
+  border-right:1px solid #1f2436;
+}
+
+/* subtle sticky shadow under the header strip */
+.week .day-head::after{
+  content:"";
+  position:absolute;
+  left:0; right:0; bottom:-1px; height:1px;
+  background:linear-gradient(to bottom, rgba(0,0,0,.35), rgba(0,0,0,0));
+  pointer-events:none;
+}
+
+.view[data-view="receptionist"] .ctrl input,
+.view[data-view="receptionist"] .ctrl select {
+  width: 100%;
+}
+
+  .receptionist-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px 24px;
+  padding: 24px;
+}
+
+.receptionist-grid .ctrl {
+  background: var(--chip);
+  border-radius: 10px;
+  border: 1px solid #262b3e;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.receptionist-grid input,
+.receptionist-grid select {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #2c3147;
+  background: #111420;
+  color: var(--text);
+}
+
+.receptionist-grid-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+  .receptionist-card {
+  max-width: 720px;
+  margin: 40px auto;
+  border-radius: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.3);
+}
+
+.receptionist-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  padding: 28px;
+}
+
+.receptionist-form .ctrl {
+  background: var(--chip);
+  border: 1px solid #262b3e;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.receptionist-form input,
+.receptionist-form select {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #2c3147;
+  background: #111420;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.receptionist-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+@media (max-width: 700px) {
+  .receptionist-form {
+    grid-template-columns: 1fr;
+  }
+}
+  
+@media (max-width: 960px){
+  .app{ grid-template-columns: 1fr; }
+  .sidebar{ position:sticky; top:0; z-index:5; }
+}
+
+.sidebar{
+  background:#0c0f16;
+  border-right:1px solid #1d2234;
+  padding:14px 12px;
+}
+.brand{
+  display:flex; align-items:center; gap:10px;
+  padding:8px 10px; margin-bottom:10px; color:var(--text);
+}
+.brand .logo{ font-size:20px; }
+
+.nav{ display:flex; flex-direction:column; gap:6px; }
+.nav-item{
+  text-align:left; border:none; cursor:pointer;
+  background:transparent; color:#cfd6ea;
+  padding:10px 12px; border-radius:10px; font-weight:600;
+}
+.nav-item:hover{ background:#151a24; }
+.nav-item.active{ background:#1b2240; color:#fff; box-shadow:inset 0 0 0 1px #2e4aa3; }
+
+#authView{
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(10,12,18,.92); z-index:9999;
+}
+.auth-card{
+  width: min(420px, 92vw);
+  background: var(--panel);
+  border:1px solid #23273a;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  text-align:center;
+}
+.auth-card h2{ margin: 0 0 12px; }
+.auth-row{
+  display:grid; gap:10px; grid-template-columns:1fr; margin-top:10px;
+}
+.auth-row input{
+  padding:10px 12px; border-radius:8px; border:1px solid #2c3147; background:#111420; color:var(--text);
+}
+.auth-actions{ display:flex; gap:10px; justify-content:center; margin-top:12px; }
+
+  /* === Sticky topbar === */
+.topbar{
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 16px;
+  background: #111626; border-bottom: 1px solid #1d2234;
+}
+
+.topbar .brand{ display:flex; align-items:center; gap:10px; color:var(--text); }
+.topbar .brand .logo{ font-size:18px; }
+.topbar .brand .name{ font-weight:800; letter-spacing:.2px; }
+
+.topbar .account{ display:flex; align-items:center; gap:8px; }
+
+.btn.small{
+  padding:8px 10px; border-radius:8px; font-weight:600; border:none; cursor:pointer;
+  background:var(--accent); color:#fff;
+}
+.btn.small.secondary{ background:#28304a; color:#d6dcf0; }
+
+/* Avatar & menu */
+.avatar-btn{
+  display:flex; align-items:center; gap:8px;
+  padding:6px 10px; border-radius:999px; border:1px solid #27304a;
+  background:#101425; color:#dbe4ff; cursor:pointer;
+}
+.avatar-circle{
+  width:28px; height:28px; border-radius:50%;
+  display:grid; place-items:center; font-weight:800;
+  background:#1d2746; color:#bcd0ff;
+}
+.avatar-name{ font-weight:700; font-size:13px; }
+
+.menu{
+  position:absolute; right:16px; top:52px; min-width:200px;
+  background:var(--panel); border:1px solid #23273a; border-radius:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,.35); padding:8px; display:none; z-index:30;
+}
+.menu.open{ display:block; }
+.menu .mi{
+  width:100%; text-align:left; padding:8px 10px; border-radius:8px;
+  background:transparent; color:#d6dcf0; border:none; cursor:pointer;
+}
+.menu .mi:hover{ background:#151a24; }
+
+
+
+/* The top header you already have should stick as before when inside .app-content */
+</style>
+</head>
+<body>
+
+  <!-- Auth screen (hidden when logged in) -->
+  <div id="authView" style="display:none">
+    <div class="auth-card">
+      <h2>Sign in to Barber AI</h2>
+      <div class="auth-row">
+        <input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email"/>
+        <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password"/>
+      </div>
+      <div class="auth-actions">
+        <button id="btnSignIn">Sign In</button>
+        <button id="btnSignUp" class="secondary">Create Account</button>
+        <button id="btnGuest" class="secondary">Continue as Guest</button>
+      </div>
+      <p class="hint" id="authMsg"></p>
+    </div>
+  </div>
+  
+  <div class="app">
+  <aside class="sidebar">
+    <nav class="nav">
+      <button class="nav-item active" data-view="scheduling">Scheduling</button>
+      <button class="nav-item" data-view="receptionist">Edit Receptionist</button>
+      <button class="nav-item" data-view="advanced">Advanced</button>
+      <button class="nav-item" data-view="logs">Logs</button>
+      <button class="nav-item" data-view="account">Account</button>
+    </nav>
+  </aside>
+
+<div class="app-content">
+  
+<!-- Top site header (sticky) -->
+<div class="topbar">
+  <div class="brand">
+    <span class="logo">📞</span>
+    <span class="name">AI Receptionist</span>
+  </div>
+
+  <div class="account" id="topbarAccount">
+    <!-- Filled by renderTopbar() -->
+    <button class="btn small" id="tbSignIn">Sign In</button>
+    <button class="btn small secondary" id="tbSignUp">Sign Up</button>
+  </div>
+</div>
+
+<main>
+  <section class="view" data-view="scheduling">
+
+<header>
+    <div class="row">
+      <div class="ctrl">
+        <label>Business hours</label>
+        <div class="row" style="gap:6px">
+          <input id="startHour" type="time" value="09:00">
+          <input id="endHour" type="time" value="18:00">
+        </div>
+      </div>
+    </div>
+  </header>
+    
+  <!-- WEEK SCHEDULER -->
+  <section class="card">
+    <header>
+      <h2>Weekly Availability</h2>
+      <div class="legend">
+        <span class="chip"><span class="dot unavail"></span> Unavailable slot</span>
+        <span class="chip"><span class="dot block"></span> Blackout day</span>
+      </div>
+      <!-- NEW: week controls styled like the month controls -->
+      <div class="month-controls" id="weekControls">
+        <button class="secondary" id="prevWeek">◀</button>
+        <div id="weekTitle" class="hint">Week</div>
+        <button class="secondary" id="nextWeek">▶</button>
+        <button class="danger" id="clearWeek">Clear All</button>
+      </div>
+    </header>
+    <div class="week-wrap">
+      <div id="week" class="week"></div>
+    </div>
+    <div style="padding:10px 14px;border-top:1px solid #21263a" class="hint">
+      Tip: Click or click-drag to mark times you are <b>unavailable</b>. Blackout days (from the month view) are disabled here.
+    </div>
+  </section>
+
+  <!-- MONTH BLACKOUTS -->
+  <section class="card">
+    <header>
+      <h2>Blackout Days</h2>
+      <div class="month-controls">
+        <button class="secondary" id="prevMon">◀</button>
+        <div id="monTitle" class="hint">Month YYYY</div>
+        <button class="secondary" id="nextMon">▶</button>
+        <button class="danger" id="clearBlackouts">Clear All</button>
+      </div>
+    </header>
+    <div style="padding:8px 12px;color:var(--muted)">Click any day to toggle a full-day blackout (no bookings).</div>
+    <div id="monthDow" class="month-dow"></div>
+    <div id="month" class="month-grid"></div>
+  </section>
+  <div class="inline-actions">
+    <button id="todayBtn" class="secondary">Jump to Today</button>
+  </div>
+    
+ </section>
+
+  <section class="view" data-view="receptionist" hidden>
+  <section class="card receptionist-card">
+    <header><h2>Edit Receptionist</h2></header>
+    <div class="receptionist-form">
+      <!-- Identity -->
+      <div class="ctrl" style="min-width:unset;">
+        <label>Receptionist Name</label>
+        <input id="rcpName" type="text" placeholder="Barber AI Receptionist"/>
+      </div>
+
+      <!-- Greeting -->
+      <div class="ctrl" style="min-width:unset;">
+        <label>Greeting</label>
+        <input id="rcpGreeting" type="text"
+               placeholder="Hello, thank you for calling the barbershop! How can I help you today."/>
+      </div>
+
+      <!-- Business info -->
+      <div class="ctrl">
+        <label>Timezone</label>
+        <select id="rcpTZ">
+          <option value="America/New_York">America/New_York (ET)</option>
+          <option value="America/Chicago">America/Chicago (CT)</option>
+          <option value="America/Denver">America/Denver (MT)</option>
+          <option value="America/Los_Angeles">America/Los_Angeles (PT)</option>
+        </select>
+      </div>
+      
+      <div class="ctrl">
+        <label>Business Phone (for confirmations)</label>
+        <input id="rcpPhone" type="tel" placeholder="+1 555-123-4567"/>
+      </div>
+
+
+      <div class="receptionist-actions">
+        <button id="rcpSave">Save</button>
+        <button class="secondary" id="rcpReset">Reset</button>
+      </div>
+      <div class="hint">These settings save locally. Later we’ll POST them to your backend.</div>
+    </div>
+  </section>
+</section>
+
+<section class="view" data-view="advanced" hidden>
+  <section class="card">
+    <header><h2>Advanced Features</h2></header>
+    <div style="padding:14px; display:grid; gap:12px;">
+
+      <!-- Voice / speaking -->
+      <div class="row" style="gap:12px; flex-wrap:wrap;">
+        <div class="ctrl" style="min-width:220px">
+          <label>Voice</label>
+          <select id="rcpVoice">
+            <option value="alloy">Alloy</option>
+            <option value="verse">Verse</option>
+            <option value="breeze">Breeze</option>
+          </select>
+        </div>
+        <div class="ctrl" style="min-width:220px">
+          <label>Speaking Rate</label>
+          <input id="rcpRate" type="number" step="0.1" min="0.5" max="2" placeholder="1.0"/>
+        </div>
+      </div>
+    
+      <!-- Call behavior -->
+      <div class="row" style="gap:12px; flex-wrap:wrap;">
+        <div class="ctrl" style="min-width:220px">
+          <label>Allow Barge-in</label>
+          <select id="rcpBarge">
+            <option value="true">Yes (recommended)</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+        <div class="ctrl" style="min-width:220px">
+          <label>End-of-Utterance Silence (ms)</label>
+          <input id="rcpEOS" type="number" step="100" min="300" placeholder="1000"/>
+        </div>
+      </div>
+
+      <div class="receptionist-grid-actions">
+        <button id="advSave">Save</button>
+        <button class="secondary" id="advReset">Reset</button>
+      </div>
+    
+    </div>
+
+  </section>
+</section>
+
+<section class="view" data-view="logs" hidden>
+  <section class="card">
+    <header><h2>Logs</h2></header>
+    <div style="padding:14px">
+      <p class="hint">Space for call logs or recent actions.</p>
+    </div>
+  </section>
+</section>
+
+  <section class="view" data-view="account" hidden>
+    <section class="card" style="max-width:720px;margin:24px auto;">
+      <header><h2>Account</h2></header>
+      <div style="padding:18px;display:grid;gap:14px;">
+        <div class="ctrl">
+          <label>Full name</label>
+          <input id="acctFullName" type="text" placeholder="Your name"/>
+        </div>
+        <div class="ctrl">
+          <label>Email</label>
+          <input id="acctEmail" type="email" disabled />
+        </div>
+        <div class="receptionist-actions" style="justify-content:flex-start;">
+          <button id="acctSave">Save</button>
+          <button class="secondary" id="acctResetPw">Send password reset email</button>
+          <button class="danger" id="acctSignOut">Sign Out</button>
+        </div>
+        <div class="hint" id="acctMsg"></div>
+      </div>
+    </section>
+  </section>
+</main>
+
+<footer>
+  <div>
+    <div class="hint">Data auto-saves in your browser.</div>
+  </div>
+</footer>
+
+<script>
+/* ---------- Utilities ---------- */
+const fmtDate = (d)=> new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+const pad = n => String(n).padStart(2,'0');
+function minutesBetween(a,b){ return Math.max(0, Math.round((b-a)/60000)); }
+function addMinutes(date, m){ return new Date(date.getTime()+m*60000); }
+function weekStart(d){
+  const x = new Date(d);
+  const day = x.getDay();      // Sun=0, Mon=1, ... Sat=6
+  x.setHours(0,0,0,0);
+  x.setDate(x.getDate() - day); // back to Sunday
+  return x;
+}
+function clone(d){ return new Date(d.getTime()); }
+function tzLocalISO(date){ // yyyy-mm-ddTHH:MM (local)
+  const z = new Date(date.getTime()-date.getTimezoneOffset()*60000);
+  return z.toISOString().slice(0,16);
+}
+
+/* ---------- State ---------- */
+const storeKey = "barber_gui_state_v1";
+let state = {
+  slotLen: 15,
+  start: "09:00",
+  end: "18:00",
+  // availability: { 'YYYY-MM-DD': { 'HH:MM': true, ... } }
+  availability: {},
+  // blackoutDays: Set<string>
+  blackoutDays: {},
+  // cursors
+  weekCursor: weekStart(new Date()),
+  monthCursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+
+  greeting: "Hello, thank you for calling the barbershop! How can I help you today.",
+
+  receptionist: {
+    name: "Barber AI Receptionist",
+    greeting: "Hello, thank you for calling the barbershop! How can I help you today.",
+    voice: "alloy",
+    rate: 1.0,
+    bargeIn: true,
+    endSilenceMs: 1000,
+    timezone: "America/New_York",
+    phone: ""
+  }
+};
+function save() {
+  // always keep local in sync
+  localStorage.setItem(storeKey, JSON.stringify(state));
+  // also push to cloud if logged in (guest mode skipped automatically)
+  scheduleCloudSave();
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(storeKey);
+    if(!raw) return;
+    const s = JSON.parse(raw);
+    // merge sensibly
+    state = {
+      ...state,
+      ...s,
+      weekCursor: s.weekCursor ? new Date(s.weekCursor) : state.weekCursor,
+      monthCursor: s.monthCursor ? new Date(s.monthCursor) : state.monthCursor,
+      greeting: typeof s.greeting === "string" ? s.greeting : state.greeting,
+      receptionist: { ...state.receptionist, ...(s.receptionist || {}) }
+    };
+  }catch{}
+}
+load();
+
+  // ---- Cloud sync helpers (ADD THIS) ----
+async function getSessionUser() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) { console.warn('[auth] getSession error', error); }
+  return session?.user || null;
+}
+
+// Keep your local save, but expose a "local only" version too
+function saveLocalOnly() {
+  localStorage.setItem(storeKey, JSON.stringify(state));
+}
+
+// Debounced cloud write so we don't spam the DB
+let __cloudTimer = null;
+function scheduleCloudSave() {
+  clearTimeout(__cloudTimer);
+  __cloudTimer = setTimeout(saveCloudState, 600); // batch quick edits
+}
+
+async function saveCloudState() {
+  try {
+    const user = await getSessionUser();
+    if (!user) return; // guests stay local only
+
+    // Serialize dates so PostgREST doesn’t choke on Date objects
+    const payload = {
+      name: state.receptionist.name,
+      greeting: state.receptionist.greeting,
+      voice: state.receptionist.voice,
+      rate: Number(state.receptionist.rate),
+      barge_in: !!state.receptionist.bargeIn,
+      end_silence_ms: Number(state.receptionist.endSilenceMs),
+      timezone: state.receptionist.timezone,
+      phone: state.receptionist.phone || ''
+    };
+
+    const { error } = await supabase
+      .from('barber_state')
+      .upsert({ user_id: user.id, data: payload })
+      .select('user_id'); // to surface errors in console
+
+    if (error) console.warn('[cloud] save error', error);
+  } catch (e) {
+    console.warn('[cloud] save exception', e);
+  }
+}
+
+async function loadCloudState() {
+  try {
+    const user = await getSessionUser();
+    if (!user) return false; // no session → nothing to load
+
+    const { data, error } = await supabase
+      .from('barber_state')
+      .select('data, updated_at')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) { console.warn('[cloud] load error', error); return false; }
+
+    if (data?.data) {
+      // Merge, preserving your current structure
+      const d = data.data;
+      state = {
+        ...state,
+        ...d,
+        weekCursor: d.weekCursor ? new Date(d.weekCursor) : state.weekCursor,
+        monthCursor: d.monthCursor ? new Date(d.monthCursor) : state.monthCursor,
+        receptionist: { ...state.receptionist, ...(d.receptionist || {}) }
+      };
+      saveLocalOnly();
+      return true;
+    }
+
+    // If no row yet, seed the cloud with local state
+    await saveCloudState();
+    return true;
+  } catch (e) {
+    console.warn('[cloud] load exception', e);
+    return false;
+  }
+}
+
+  async function upsertReceptionistConfig(partialCfg = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user) return { ok: false, reason: 'no-session' };
+
+  const cfg = {
+    user_id: user.id,
+    name: state.receptionist.name ?? 'Barber AI Receptionist',
+    greeting: state.receptionist.greeting ?? '',
+    voice: state.receptionist.voice ?? 'alloy',
+    rate: Number(state.receptionist.rate ?? 1.0),
+    barge_in: !!state.receptionist.bargeIn,
+    end_silence_ms: Number(state.receptionist.endSilenceMs ?? 1000),
+    timezone: state.receptionist.timezone ?? 'America/New_York',
+    phone: state.receptionist.phone ?? '',
+    ...partialCfg, // allow overrides
+  };
+
+  const { error } = await supabase
+    .from('receptionist_config')
+    .upsert(cfg)
+    .select('user_id'); // forces error surfaces
+  return { ok: !error, error };
+}
+
+async function fetchReceptionistConfig() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from('receptionist_config')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[cloud] receptionist_config fetch error', error);
+    return null;
+  }
+  return data;
+}
+
+async function ensureReceptionistRowExists() {
+  const cfg = await fetchReceptionistConfig();
+  if (cfg) return; // already exists
+  await upsertReceptionistConfig(); // writes current state.receptionist as their row
+}
+
+async function apiFetch(path, opts = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(path, { ...opts, headers });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
+}
+
+function getReceptionistPayloadFromState() {
+  return {
+    name:       state.receptionist.name,
+    greeting:   state.receptionist.greeting,
+    voice:      state.receptionist.voice,
+    rate:       Number(state.receptionist.rate),
+    barge_in:   !!state.receptionist.bargeIn,
+    end_silence_ms: Number(state.receptionist.endSilenceMs),
+    timezone:   state.receptionist.timezone,
+    phone:      state.receptionist.phone || ''
+  };
+}
+
+// Convenience: when user logs in, hydrate UI from cloud (or seed cloud)
+async function hydrateFromCloudAndRepaint() {
+  try {
+    const cfg = await apiFetch('/api/me/config'); // GET -> { ... } or null/404
+
+    if (cfg && typeof cfg === 'object') {
+      state.receptionist = {
+        ...state.receptionist,
+        name:         cfg.name ?? state.receptionist.name,
+        greeting:     cfg.greeting ?? state.receptionist.greeting,
+        voice:        cfg.voice ?? state.receptionist.voice,
+        rate:         (typeof cfg.rate === 'number' ? cfg.rate : state.receptionist.rate),
+        bargeIn:      (typeof cfg.barge_in === 'boolean' ? cfg.barge_in : state.receptionist.bargeIn),
+        endSilenceMs: (typeof cfg.end_silence_ms === 'number' ? cfg.end_silence_ms : state.receptionist.endSilenceMs),
+        timezone:     cfg.timezone ?? state.receptionist.timezone,
+        phone:        cfg.phone ?? state.receptionist.phone,
+      };
+      saveLocalOnly();
+    } else {
+      // no server row yet; keep local defaults
+      console.log('[api] /api/me/config returned empty; keeping local receptionist state');
+    }
+  } catch (e) {
+    console.warn('[api] GET /api/me/config failed; using local state', e);
+  }
+
+  // Keep your existing scheduling state load
+  try { await loadCloudState(); } catch {}
+
+  renderWeek();
+  renderMonth();
+  paintReceptionistForm?.();
+  return true;
+}
+
+
+
+/* ---------- DOM refs ---------- */
+const startHour = document.getElementById('startHour');
+const endHour = document.getElementById('endHour');
+const weekEl = document.getElementById('week');
+const prevWeek = document.getElementById('prevWeek');
+const nextWeek = document.getElementById('nextWeek');
+const clearWeek = document.getElementById('clearWeek');
+const weekTitle = document.getElementById('weekTitle');
+const todayBtn = document.getElementById('todayBtn');
+
+const monTitle = document.getElementById('monTitle');
+const monthEl = document.getElementById('month');
+const prevMon = document.getElementById('prevMon');
+const nextMon = document.getElementById('nextMon');
+const clearBlackouts = document.getElementById('clearBlackouts');
+
+// Edit Receptionist refs
+const rcpName    = document.getElementById('rcpName');
+const rcpGreeting= document.getElementById('rcpGreeting');
+const rcpVoice   = document.getElementById('rcpVoice');
+const rcpRate    = document.getElementById('rcpRate');
+const rcpBarge   = document.getElementById('rcpBarge');
+const rcpEOS     = document.getElementById('rcpEOS');
+const rcpTZ      = document.getElementById('rcpTZ');
+const rcpPhone   = document.getElementById('rcpPhone');
+const rcpSave    = document.getElementById('rcpSave');
+const rcpReset   = document.getElementById('rcpReset');
+
+// Account Refs
+const acctFullName = document.getElementById('acctFullName');
+const acctEmail    = document.getElementById('acctEmail');
+const acctSave     = document.getElementById('acctSave');
+const acctResetPw  = document.getElementById('acctResetPw');
+const acctSignOut  = document.getElementById('acctSignOut');
+const acctMsg      = document.getElementById('acctMsg');
+
+
+  /* === Left-nav view router === */
+function showView(name){
+  document.querySelectorAll('.nav-item').forEach(b=>{
+    b.classList.toggle('active', b.dataset.view === name);
+  });
+  document.querySelectorAll('.view').forEach(v=>{
+    v.hidden = v.dataset.view !== name;
+  });
+  if (name === 'receptionist') paintReceptionistForm();
+  if (name === 'account') paintAccountForm();
+}
+document.querySelectorAll('.nav-item').forEach(b=>{
+  b.addEventListener('click', ()=> showView(b.dataset.view));
+});
+
+// Initial view (hash or default)
+showView((location.hash && location.hash.slice(1)) || 'scheduling');
+window.addEventListener('hashchange', ()=> showView(location.hash.slice(1) || 'scheduling'));
+
+/* ---------- Init controls ---------- */
+startHour.value = state.start;
+endHour.value   = state.end;
+
+/* ---------- 12hr time ---------- */
+function formatTime12h(hours, minutes = 0) {
+  const ampm = hours >= 12 ? "PM" : "AM";
+  let h = hours % 12;
+  if (h === 0) h = 12;
+  const m = minutes.toString().padStart(2, "0");
+  return `${h}:${m} ${ampm}`;
+}
+
+  /* ---------- helper for formatting ---------- */
+  function formatWeekRangeLabel(weekStartDate){
+  const start = new Date(weekStartDate);
+  const end = addMinutes(start, 6*24*60); // +6 days
+  const opts = { month:'short', day:'numeric' };
+  const s = start.toLocaleDateString(undefined, opts);
+  const e = end.toLocaleDateString(undefined, opts);
+  return `${s} – ${e}`;
+}
+
+  // put this near your router helpers
+function gotoSchedulingIfNotThere(opts = { replace: true }) {
+  const target = '#scheduling';
+  if (location.hash === target) return; // already there
+  if (opts.replace) {
+    history.replaceState(null, '', target); // no extra back history
+    // trigger a repaint the same way a hashchange would:
+    showView('scheduling');
+  } else {
+    location.hash = 'scheduling'; // creates a history entry
+  }
+}
+  
+ /* ---------- Receptionist hydrators and helpers ---------- */
+  function paintReceptionistForm(){
+  const r = state.receptionist;
+  if (!rcpName) return; // view not mounted yet
+  rcpName.value     = r.name ?? "";
+  rcpGreeting.value = r.greeting ?? "";
+  rcpVoice.value    = r.voice ?? "alloy";
+  rcpRate.value     = r.rate ?? 1.0;
+  rcpBarge.value    = String(r.bargeIn ?? true);
+  rcpEOS.value      = r.endSilenceMs ?? 1000;
+  rcpTZ.value       = r.timezone ?? "America/New_York";
+  rcpPhone.value    = r.phone ?? "";
+}
+
+async function paintAccountForm(){
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user) {
+    acctEmail.value = "";
+    acctFullName.value = "";
+    acctMsg.textContent = "Not signed in.";
+    return;
+  }
+  acctEmail.value = user.email || "";
+  acctFullName.value = user.user_metadata?.full_name || "";
+  acctMsg.textContent = "";
+}
+
+// actions
+acctSave?.addEventListener('click', async ()=>{
+  acctMsg.textContent = "";
+  const full_name = (acctFullName.value || "").trim();
+  const { error } = await supabase.auth.updateUser({ data: { full_name } });
+  acctMsg.textContent = error ? error.message : "Saved!";
+  // re-render topbar so name updates
+  await renderTopbar();
+});
+
+acctResetPw?.addEventListener('click', async ()=>{
+  acctMsg.textContent = "";
+  const email = acctEmail.value;
+  if (!email){ acctMsg.textContent = "No email on file."; return; }
+  const { error } = await supabase.auth.resetPasswordForEmail(email /* , { redirectTo: 'https://yourapp.com/reset' } */);
+  acctMsg.textContent = error ? error.message : "Reset email sent.";
+});
+
+acctSignOut?.addEventListener('click', () => doSignOut('account-view'));
+
+function saveReceptionistFromForm(){
+  state.receptionist = {
+    ...state.receptionist,
+    name: rcpName.value.trim(),
+    greeting: rcpGreeting.value.trim(),
+    voice: rcpVoice.value,
+    rate: Number(rcpRate.value || 1.0),
+    bargeIn: rcpBarge.value === "true",
+    endSilenceMs: Number(rcpEOS.value || 1000),
+    timezone: rcpTZ.value,
+    phone: rcpPhone.value.trim()
+  };
+  save();
+}
+
+let __mouseupBound = false;
+function bindGlobalMouseupOnce(onUp){
+  if (__mouseupBound) return;
+  document.addEventListener('mouseup', onUp);
+  __mouseupBound = true;
+}
+
+/* ---------- Week view rendering ---------- */
+function renderWeek(){
+  const slot = 15;   
+  const [sh, sm] = state.start.split(':').map(Number);
+  const [eh, em] = state.end.split(':').map(Number);
+
+  const startMins = sh*60 + sm;
+  const endMins   = eh*60 + em;
+  if (endMins <= startMins) return; // invalid config guard
+
+  const rows = Math.ceil((endMins-startMins)/slot);
+  const days = Array.from({length:7},(_,i)=> addMinutes(state.weekCursor, i*24*60));
+  if (weekTitle) {
+    weekTitle.textContent = formatWeekRangeLabel(state.weekCursor);
+  }
+  weekEl.innerHTML = "";
+  weekEl.style.gridTemplateRows = `40px repeat(${rows}, 20px)`;
+  
+
+  // top-left header spacer
+  const topLeft = document.createElement('div');
+  topLeft.className = "day-head time-cell";
+  topLeft.style.gridColumn = "1";
+  topLeft.style.gridRow = "1";
+  weekEl.appendChild(topLeft);
+
+  // time column (sticks on the left, spans all rows beneath headers)
+  const timeCol = document.createElement('div');
+  timeCol.className = "time-col";
+  timeCol.style.gridColumn = "1";
+  timeCol.style.gridRow = `2 / span ${rows}`; 
+
+  const timeLabels = document.createElement('div');
+  timeLabels.style.display = "grid";
+  timeLabels.style.gridAutoRows = "20px";
+  for(let r=0;r<rows;r++){
+    const t = startMins + r*slot;
+    if (t % 60 === 0) {
+      const lab = document.createElement('div');
+      lab.className="time-label";
+      lab.textContent = formatTime12h(Math.floor(t/60), 0);
+      timeLabels.appendChild(lab);
+    } else {
+      const spacer = document.createElement('div');
+      spacer.style.height="20px";
+      spacer.style.borderBottom="1px dashed #1e2435";
+      timeLabels.appendChild(spacer);
+    }
+  }
+  timeCol.appendChild(timeLabels);
+  weekEl.appendChild(timeCol);
+
+  // day headers
+  const dowNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  days.forEach((d,idx)=>{
+    const h = document.createElement('div');
+    h.className = "day-head";
+    const disp = d.toLocaleDateString(undefined,{month:'short', day:'numeric'});
+    h.innerHTML = `<div class="dow">${dowNames[idx]}</div><div class="date">${disp}</div>`;
+    h.style.gridColumn = String(idx+2);
+    h.style.gridRow = "1";
+    weekEl.appendChild(h);
+  });
+
+  // slots (7 day columns)
+  let isDragging = false;
+  let dragMode = null; // true => activating, false => deactivating
+  
+  const onDown = (e, dateStr, timeStr, cell) => {
+    if (state.blackoutDays[dateStr]) return;
+    isDragging = true;
+    const cur = !!(state.availability?.[dateStr]?.[timeStr]);
+    dragMode = !cur; // toggle intent
+    toggleSlot(dateStr, timeStr, dragMode);
+    cell.classList.toggle('active', dragMode);
+  };
+  const onOver = (e, dateStr, timeStr, cell) => {
+    if (!isDragging) return;
+    if (state.blackoutDays[dateStr]) return;
+    toggleSlot(dateStr, timeStr, dragMode);
+    cell.classList.toggle('active', dragMode);
+  };
+  const onUp = ()=>{ isDragging=false; dragMode=null; save(); };
+  bindGlobalMouseupOnce(onUp)
+  
+  // ✅ Create ONE column per day, then fill it with row cells
+  days.forEach((d, dayIdx) => {
+    const dateStr = fmtDate(d);
+    const col = document.createElement('div');
+    col.className = "slots";
+    col.style.gridColumn = String(dayIdx + 2); // col 1 is the time labels
+    col.style.gridRow = `2 / span ${rows}`;             // span all time rows
+  
+    for (let r = 0; r < rows; r++) {
+      const mins = startMins + r * slot;
+      const hours = Math.floor(mins / 60), minutes = mins % 60;
+      const timeStr = `${pad(hours)}:${pad(minutes)}`;
+  
+      const cell = document.createElement('div');
+      cell.className = "slot";
+  
+      if (state.blackoutDays[dateStr]) cell.classList.add('blocked');
+      if (state.availability?.[dateStr]?.[timeStr]) cell.classList.add('active');
+  
+      cell.addEventListener('mousedown', (e)=>onDown(e,dateStr,timeStr,cell));
+      cell.addEventListener('mouseenter', (e)=>onOver(e,dateStr,timeStr,cell));
+  
+      if (minutes === 0) {
+        const tag = document.createElement('div');
+        tag.className = "tag";
+        tag.textContent = formatTime12h(hours, minutes); // 12h labels
+        cell.appendChild(tag);
+      }
+  
+      col.appendChild(cell);
+    }
+  
+    weekEl.appendChild(col);
+  });
+}
+
+function toggleSlot(dateStr, timeStr, isUnavailable){
+  state.availability[dateStr] = state.availability[dateStr] || {};
+  if (isUnavailable) state.availability[dateStr][timeStr] = true;
+  else delete state.availability[dateStr][timeStr];
+  if (Object.keys(state.availability[dateStr]).length===0) delete state.availability[dateStr];
+}
+
+  function toggleWeekdayForMonth(dow){
+  const cur = state.monthCursor;
+  const y = cur.getFullYear();
+  const m = cur.getMonth();
+  const last = new Date(y, m + 1, 0).getDate(); // last day in month (1..28/29/30/31)
+
+  // Collect all dates in this month that match the weekday
+  const keys = [];
+  for(let day=1; day<=last; day++){
+    const d = new Date(y, m, day);
+    if (d.getDay() === dow) keys.push(fmtDate(d));
+  }
+
+  // If *every* matching day is already blacked out, we will un-block; otherwise, block all.
+  const allBlocked = keys.every(k => !!state.blackoutDays[k]);
+  const willBlock = !allBlocked;
+
+  if (willBlock) {
+    for (const k of keys) {
+      state.blackoutDays[k] = true;
+      delete state.availability[k]; // wipe availability on those days
+    }
+  } else {
+    for (const k of keys) {
+      delete state.blackoutDays[k];
+      // (leave availability alone on un-block; user can toggle slots)
+    }
+  }
+
+  save();
+  renderMonth();
+  renderWeek();
+}
+
+/* ---------- Month view rendering ---------- */
+function renderMonth(){
+  const cur = state.monthCursor;
+  const y = cur.getFullYear();
+  const m = cur.getMonth();
+  const first = new Date(y,m,1);
+  monTitle.textContent = first.toLocaleString(undefined,{month:'long', year:'numeric'});
+
+  // draw weekday header (Sun–Sat) as buttons
+  const dowHdr = document.getElementById('monthDow');
+  dowHdr.innerHTML = "";
+  ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach((txt, dow)=>{
+    const b = document.createElement('button');
+    b.type = "button";
+    b.className = "dow-btn";
+    b.textContent = txt;
+    b.dataset.dow = String(dow);     // 0..6
+    b.title = `Toggle all ${txt}s this month`;
+    b.addEventListener('click', ()=> toggleWeekdayForMonth(dow));
+    dowHdr.appendChild(b);
+  });
+
+  // start on Monday
+  const startOffset = first.getDay();
+  const startCellDate = new Date(y,m,1 - startOffset);
+  const totalCells = 42; // 6 weeks grid
+
+  monthEl.innerHTML = "";
+  for(let i=0;i<totalCells;i++){
+    const d = new Date(startCellDate); d.setDate(d.getDate()+i);
+    const inMonth = d.getMonth()===m;
+    const key = fmtDate(d);
+    const cell = document.createElement('div');
+    cell.className = "cell";
+    if (!inMonth) cell.classList.add('dim');
+    if (state.blackoutDays[key]) cell.classList.add('blockout');
+
+    cell.innerHTML = `<div class="d">${d.getDate()}</div>`;
+    cell.addEventListener('click', ()=>{
+      // toggle blackout
+      if (state.blackoutDays[key]) {
+        delete state.blackoutDays[key];
+      } else {
+        state.blackoutDays[key] = true;
+        // wipe any availability on that day
+        delete state.availability[key];
+      }
+      save();
+      renderMonth();
+      renderWeek();
+    });
+
+    monthEl.appendChild(cell);
+  }
+}
+
+/* ---------- Wire controls ---------- */
+[startHour, endHour].forEach(inp=>{
+  inp.addEventListener('change', ()=>{
+    state.start = startHour.value;
+    state.end   = endHour.value;
+    save(); renderWeek();
+  });
+});
+
+prevWeek.addEventListener('click', ()=>{
+  state.weekCursor = addMinutes(state.weekCursor, -7*24*60);
+  save(); renderWeek();
+});
+nextWeek.addEventListener('click', ()=>{
+  state.weekCursor = addMinutes(state.weekCursor, 7*24*60);
+  save(); renderWeek();
+});
+clearWeek.addEventListener('click', ()=>{
+  const weekStartDate = state.weekCursor;
+  for (let i = 0; i < 7; i++) {
+    const key = fmtDate(addMinutes(weekStartDate, i*24*60));
+    delete state.availability[key];
+  }
+  save();
+  renderWeek();
+});
+
+prevMon.addEventListener('click', ()=>{ state.monthCursor = new Date(state.monthCursor.getFullYear(), state.monthCursor.getMonth()-1, 1); save(); renderMonth(); });
+nextMon.addEventListener('click', ()=>{ state.monthCursor = new Date(state.monthCursor.getFullYear(), state.monthCursor.getMonth()+1, 1); save(); renderMonth(); });
+clearBlackouts.addEventListener('click', ()=>{
+  state.blackoutDays = {};
+  save(); renderMonth(); renderWeek();
+});
+
+if (rcpSave) {
+  rcpSave?.addEventListener('click', async () => {
+    saveReceptionistFromForm();
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await apiFetch('/api/me/config', {
+          method: 'PUT',
+          body: JSON.stringify(getReceptionistPayloadFromState())
+        });
+      }
+    } catch (e) {
+      console.warn('[api] PUT /api/me/config failed', e);
+    }
+    rcpSave.disabled = true;
+    const old = rcpSave.textContent;
+    rcpSave.textContent = "Saved ✅";
+    setTimeout(() => { rcpSave.textContent = old; rcpSave.disabled = false; }, 900);
+  });
+}
+if (rcpReset) {
+  rcpReset.addEventListener('click', ()=>{
+    state.receptionist = {
+      name: "Barber AI Receptionist",
+      greeting: "Hello, thank you for calling the barbershop! How can I help you today.",
+      voice: "alloy",
+      rate: 1.0,
+      bargeIn: true,
+      endSilenceMs: 1000,
+      timezone: "America/New_York",
+      phone: ""
+    };
+    save();
+    paintReceptionistForm();
+  });
+}
+
+  todayBtn?.addEventListener('click', () => {
+  // Jump the week grid to the current week (Sunday start)
+  state.weekCursor = weekStart(new Date());
+  // Jump the month grid to the current month
+  state.monthCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  save();
+  renderWeek();
+  renderMonth();
+});
+
+const advSave = document.getElementById('advSave');
+advSave?.addEventListener('click', async () => {
+  saveReceptionistFromForm();
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await apiFetch('/api/me/config', {
+        method: 'PUT',
+        body: JSON.stringify(getReceptionistPayloadFromState())
+      });
+    }
+  } catch (e) {
+    console.warn('[api] PUT /api/me/config failed', e);
+  }
+
+  advSave.textContent = "Saved!";
+    setTimeout(() => (advSave.textContent = "Save"), 900);
+});
+
+document.getElementById('advReset')?.addEventListener('click', () => {
+  // restore defaults for advanced-only fields
+  rcpVoice.value = "alloy";
+  rcpRate.value = 1.0;
+  rcpBarge.value = "true";
+  rcpEOS.value = 1000;
+  saveReceptionistFromForm();
+});
+
+/* ---------- First paint ---------- */
+renderWeek();
+renderMonth();
+paintReceptionistForm();
+
+/* ---------- Sanity checks (light tests in console) ---------- */
+(function runSanity(){
+  const cols = document.querySelectorAll('#week .slots').length;
+  console.assert(cols === 7, `Expected 7 day columns, got ${cols}`);
+  const heads = document.querySelectorAll('#week .day-head').length;
+  console.assert(heads === 8, `Expected 8 headers (including top-left), got ${heads}`);
+})();
+
+/* ---------- Public API (future backend hook) ----------
+window.getSchedulePayload = () => ({
+  slotLen: state.slotLen,
+  start: state.start,
+  end: state.end,
+  availability: state.availability,
+  blackoutDays: state.blackoutDays
+});
+------------------------------------------------------ */
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script>
+  const SUPABASE_URL = "https://rfodbzbekelwmvjsntda.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmb2RiemJla2Vsd212anNudGRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxMDk2OTQsImV4cCI6MjA3NDY4NTY5NH0.yggTGamGf69NeToTDDvjHRycXbLERfkaFowK-Q1a6-s";
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+</script>
+
+<script>
+  const appRoot   = document.querySelector('.app');
+  const authView  = document.getElementById('authView');
+  const authEmail = document.getElementById('authEmail');
+  const authPass  = document.getElementById('authPassword');
+  const btnIn     = document.getElementById('btnSignIn');
+  const btnUp     = document.getElementById('btnSignUp');
+  const authMsg   = document.getElementById('authMsg');
+  const btnGuest  = document.getElementById('btnGuest');
+
+  // --- Avatar helpers ---
+  function initialsFromEmail(email = "") {
+    const name = email.split("@")[0].replace(/[^a-z0-9]+/gi, " ").trim();
+    const parts = name.split(" ").filter(Boolean);
+    const first = parts[0]?.[0] || email?.[0] || "?";
+    const second = parts[1]?.[0] || "";
+    return (first + second).toUpperCase();
+  }
+  function displayNameFromUser(user) {
+    return user?.user_metadata?.full_name || user?.email || "User";
+  }
+  
+  function setAuthScreen(visible){
+    const appRoot = document.querySelector('.app');
+    const authView = document.getElementById('authView');
+    if (!appRoot || !authView) return;
+    authView.style.display   = visible ? 'flex' : 'none';
+    appRoot.style.filter     = visible ? 'blur(4px)' : 'none';
+    appRoot.style.pointerEvents = visible ? 'none' : 'auto';
+  }
+
+  btnIn?.addEventListener('click', async () => {
+    authMsg.textContent = '';
+    const email = (authEmail?.value || '').trim();
+    const password = authPass?.value || '';
+    if (!email || !password){ authMsg.textContent = 'Enter email and password.'; return; }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error){ authMsg.textContent = error.message; return; }
+    localStorage.removeItem('barber_guest_mode');   // <— important
+    await refreshAuthUI();
+  });
+  
+  btnUp?.addEventListener('click', async () => {
+    authMsg.textContent = '';
+    const email = (authEmail?.value || '').trim();
+    const password = authPass?.value || '';
+    if (!email || !password){ authMsg.textContent = 'Enter email and password.'; return; }
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error){ authMsg.textContent = error.message; return; }
+    localStorage.removeItem('barber_guest_mode');   // <— important
+    authMsg.textContent = 'Account created. You are now signed in.';
+    await refreshAuthUI();
+  });
+
+
+  btnGuest?.addEventListener('click', ()=>{
+    localStorage.setItem('barber_guest_mode', 'true'); // flag guest mode
+    setAuthScreen(false);                               // hide auth modal
+    renderTopbar();
+  });
+
+  // --- signout ---
+  function forceTopbarSignedOut() {
+    const wrap = document.getElementById("topbarAccount");
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <button class="btn small" id="tbSignIn">Sign In</button>
+      <button class="btn small secondary" id="tbSignUp">Sign Up</button>
+    `;
+    document.getElementById("tbSignIn")?.addEventListener("click", () => {
+      document.getElementById("authView").style.display = "flex";
+    });
+    document.getElementById("tbSignUp")?.addEventListener("click", () => {
+      document.getElementById("authView").style.display = "flex";
+    });
+  }
+
+window.__signingOut = false;
+// --- signout ---
+async function doSignOut(source = 'manual') {
+  window.__signingOut = true;
+  console.log('[signout] start from:', source);
+
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+
+    console.log('[signout] BEFORE removing guest mode');
+    localStorage.removeItem('barber_guest_mode');
+    console.log('[signout] AFTER removing guest mode');
+
+    setAuthScreen(true);
+    await renderTopbar(null);
+
+    // Optional deep clean of SB keys:
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log('[signout] final session:', session);
+    // Navigate unless we're already on scheduling
+    gotoSchedulingIfNotThere({ replace: true });
+  } catch (e) {
+    console.error('[signout] error', e);
+    alert('Sign out failed: ' + (e?.message || e));
+  } finally {
+    window.__signingOut = false;
+  }
+}
+
+window.doSignOut = doSignOut; // ensure your button calls this exact one
+ // --- Topbar rendering ---
+  function nameFromEmail(email){
+    if (!email) return "Account";
+    const base = email.split("@")[0] || "Account";
+    return base.replace(/[._-]+/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+  }
+  function initialFromEmail(email){
+    const n = nameFromEmail(email);
+    return (n.trim()[0] || "A").toUpperCase();
+  }
+
+  async function renderTopbar(){
+    const wrap = document.getElementById("topbarAccount");
+    if (!wrap) return;
+  
+    const guestMode = localStorage.getItem("barber_guest_mode") === "true";
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user || null;
+  
+    // If real user exists, real user wins over guest flag.
+    const isGuest = !user && guestMode;
+  
+    if (!user && !isGuest){
+      wrap.innerHTML = `
+        <button class="btn small" id="tbSignIn">Sign In</button>
+        <button class="btn small secondary" id="tbSignUp">Sign Up</button>
+      `;
+      document.getElementById("tbSignIn")?.addEventListener("click", () => {
+        document.getElementById("authView").style.display = "flex";
+      });
+      document.getElementById("tbSignUp")?.addEventListener("click", () => {
+        document.getElementById("authView").style.display = "flex";
+      });
+      return;
+    }
+
+    // Logged in OR guest
+    const email = session?.user?.email || "guest@barber.ai";
+    const displayName = isGuest ? "Guest" : (user?.user_metadata?.full_name || user?.email || "User");
+    const initials = (isGuest ? "G" : (user?.email || displayName || "?"))
+      .split("@")[0].replace(/[^a-z0-9]+/gi," ").trim().split(" ").map(s=>s[0]).join("").slice(0,2).toUpperCase() || "U";
+
+    wrap.innerHTML = `
+      <button class="avatar-btn" id="acctBtn" aria-haspopup="menu" aria-expanded="false">
+        <span class="avatar-circle">${initials}</span>
+        <span class="avatar-name">${displayName}</span>
+      </button>
+      <div class="menu" id="acctMenu" role="menu">
+        ${isGuest ? `
+          <div style="padding:6px 10px; color:#8a93a6;">Browsing as guest</div>
+          <button class="mi" id="miSignIn" role="menuitem">Sign In</button>
+        ` : `
+          <button class="mi" id="miAccount" role="menuitem">Account</button>
+          <button class="mi" id="miSignOut" role="menuitem">Sign Out</button>
+        `}
+      </div>
+    `;
+
+
+    document.getElementById('acctSignOut')?.addEventListener('click', () => doSignOut('account-page'));
+
+    // Toggle menu
+    const btn = document.getElementById('acctBtn');
+    const menu = document.getElementById('acctMenu');
+    function closeMenu() {
+      menu.classList.remove("open");
+      btn.setAttribute("aria-expanded", "false");
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("keydown", onEsc);
+    }
+    function onDocClick(e) {
+      if (!menu.contains(e.target) && e.target !== btn) closeMenu();
+    }
+    function onEsc(e) {
+      if (e.key === "Escape") closeMenu();
+    }
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = menu.classList.toggle("open");
+      btn.setAttribute("aria-expanded", String(open));
+      if (open) {
+        // attach once per open
+        setTimeout(() => {
+          document.addEventListener("click", onDocClick);
+          document.addEventListener("keydown", onEsc);
+        }, 0);
+      } else {
+        closeMenu();
+      }
+    });
+
+    // Menu actions
+    document.getElementById('miAccount')?.addEventListener('click', ()=> {
+    document.querySelector('.nav-item[data-view="account"]')?.click();
+      closeMenu();
+    });
+    document.getElementById('miSignOut')?.addEventListener('click', async () => {
+      // close the menu first so it doesn’t trap clicks
+      const menu = document.getElementById('acctMenu');
+      menu?.classList.remove('open');
+      await doSignOut('topbar-menu');
+    });
+    document.getElementById('miSignIn')?.addEventListener('click', ()=>{
+      localStorage.removeItem('barber_guest_mode');
+      document.getElementById('authView').style.display = 'flex';
+      closeMenu();
+    });
+  }
+
+  // Hook the topbar into your existing auth flow
+  async function refreshAuthUI(){
+    // Don’t early-return on guest if a real session exists.
+    const { data: { session } } = await supabase.auth.getSession();
+    const hasSession = !!session;
+  
+    // Show auth overlay only if no session and not guest.
+    const isGuest = localStorage.getItem('barber_guest_mode') === 'true';
+    setAuthScreen(!hasSession && !isGuest);
+  
+    await renderTopbar();
+  }
+
+  let __authTick;
+  const AUTH_DEBOUNCE = 50; // ms
+  
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    console.log('[auth:event]', event, session);
+  
+    if (window.__signingOut) {
+      console.log('[auth:event] skipped during manual sign-out');
+      return;
+    }
+  
+    clearTimeout(__authTick);
+    __authTick = setTimeout(async () => {
+      try {
+        await refreshAuthUI(); // always re-render topbar/modal
+  
+        if (event === 'SIGNED_IN' && session) {
+          await hydrateFromCloudAndRepaint();
+          await ensureReceptionistRowExists();
+          gotoSchedulingIfNotThere({ replace: true });
+        }
+  
+        if (event === 'SIGNED_OUT') {
+          setAuthScreen(true);
+          forceTopbarSignedOut();
+          gotoSchedulingIfNotThere({ replace: true });
+        }
+      } catch (e) {
+        console.warn('[auth] handler error', e);
+      }
+    }, AUTH_DEBOUNCE);
+  });
+
+//kickoff
+(async () => {
+  await refreshAuthUI();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    await hydrateFromCloudAndRepaint();
+  }
+})();
+
+</script>
+
+
+    </div> <!-- /.app-content -->
+</div>   <!-- /.app -->
+</body>
+</html>
